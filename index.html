@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Rush</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <style>
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+        #damageBar {
+            transition: width 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 flex justify-center items-center h-screen">
+    <div id="startScreen" class="absolute z-10 bg-black bg-opacity-80 text-white p-8 rounded-lg text-center">
+        <h1 class="text-4xl font-bold mb-4">Data Rush</h1>
+        <button id="startButton" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2" disabled>Loading...</button>
+        <button id="instructionsButton" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Instructions</button>
+        <div class="mt-4">
+            <input type="checkbox" id="showInstructionsOnRestart" class="mr-2">
+            <label for="showInstructionsOnRestart">Show instructions on restart</label>
+        </div>
+    </div>
+    <div id="gameOverScreen" class="absolute z-10 bg-black bg-opacity-80 text-white p-8 rounded-lg text-center" style="display: none;">
+        <h2 class="text-3xl font-bold mb-4">Game Over</h2>
+        <p class="mb-4">Your Score: <span id="finalScore" class="font-bold text-2xl"></span></p>
+        <div id="dataFundamentalsMessage" class="mb-4 p-6 bg-blue-800 rounded-lg shadow-lg text-white text-4xl font-semibold border-2 border-yellow-400 hidden"></div>
+        <div id="scoreSubmission">
+            <input type="text" id="playerName" placeholder="Enter your name" class="mb-4 p-2 text-black rounded">
+            <button id="submitScore" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded mr-2">Submit Score</button>
+        </div>
+        <div id="leaderboardPosition" class="mt-4"></div>
+        <button id="restartButton" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-4">Restart Game</button>
+    </div>
+    <canvas id="gameCanvas" width="1920" height="1080" class="border border-gray-300 rounded-lg shadow-lg"></canvas>
+    <div id="damageBarContainer" class="absolute left-4 top-4 w-64 h-8 bg-gray-700 rounded-full overflow-hidden">
+        <div id="damageBar" class="h-full bg-red-600 transition-all duration-300 ease-in-out"></div>
+    </div>
+    <div id="leaderboard" class="absolute right-4 top-4 bg-black bg-opacity-80 text-white p-4 rounded-lg">
+        <h3 class="text-xl font-bold mb-2">Top 20 Scores</h3>
+        <ol id="leaderboardList" class="list-decimal list-inside"></ol>
+    </div>
+    <div id="warningMessage" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white p-4 rounded-lg text-2xl font-bold">
+        Warning: Data Swamp Imminent!
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startButton = document.getElementById('startButton');
+        const instructionsButton = document.getElementById('instructionsButton');
+        const restartButton = document.getElementById('restartButton');
+        const submitScoreButton = document.getElementById('submitScore');
+        const finalScoreSpan = document.getElementById('finalScore');
+        const playerNameInput = document.getElementById('playerName');
+        const leaderboardList = document.getElementById('leaderboardList');
+        const damageBar = document.getElementById('damageBar');
+        const dataFundamentalsMessage = document.getElementById('dataFundamentalsMessage');
+        const scoreSubmission = document.getElementById('scoreSubmission');
+        const warningMessage = document.getElementById('warningMessage');
+        const leaderboardPosition = document.getElementById('leaderboardPosition');
+        const showInstructionsOnRestartCheckbox = document.getElementById('showInstructionsOnRestart');
+
+        // Game variables
+        let score = 0;
+        let gameOver = false;
+        let packets = [];
+        let folders = [];
+        let powerUps = [];
+        let damageLevel = 0;
+        let draggedPacket = null;
+        let level = 1;
+        let packetSpeed = 1;
+        let spawnRate = 0.01;
+        let gameStarted = false;
+        let activePowerUp = null;
+        let powerUpTimer = 0;
+        let highScore = 0;
+        let scoreRegistered = false;
+        let highScoreAchieved = false;
+        let damageParticles = [];
+
+        // Load background image
+        const bgImage = new Image();
+        bgImage.src = 'https://images.unsplash.com/photo-1557683311-eac922347aa1?auto=format&fit=crop&w=1920&q=80';
+
+        const packetTypes = [
+            { name: 'Text', color: '#3498db', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/text_icon.png' },
+            { name: 'Image', color: '#2ecc71', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/image_icon.png' },
+            { name: 'Video', color: '#e74c3c', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/video_icon.png' },
+            { name: 'Audio', color: '#f39c12', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/audio_icon.png' },
+            { name: 'Spreadsheet', color: '#9b59b6', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/spreadsheet_icon.png' },
+            { name: 'Database', color: '#34495e', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/database_icon.png' },
+            { name: 'Corrupt', color: '#95a5a6', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/corrupt_icon.png' }
+        ];
+
+        const powerUpTypes = [
+            { name: 'Slowdown', color: '#f1c40f', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/slowdown_icon.png', duration: 5000 },
+            { name: 'AutoSort', color: '#1abc9c', icon: 'https://raw.githubusercontent.com/zerovertical/datarush/main/icons/autosort_icon.png', duration: 5000 }
+        ];
+
+        const dataFundamentals = [
+            "Data Cataloguing: A well-structured data catalog helps you quickly find the data you need, improving productivity and decision-making.",
+            "Data Labelling: Consistent and clear data labels ensure that everyone speaks the same language across teams and departments.",
+            "Data Lineage: Tracking the journey of your data helps ensure transparency and trust in its accuracy.",
+            "Data Provenance: Knowing where your data originated gives confidence in its quality and reliability.",
+            "Data Modelling: Well-designed data models are the blueprint for understanding complex relationships and trends in your data.",
+            "Data Quality: Clean, accurate data is essential for making sound business decisions.",
+            "Lifecycle Management: Proper data retention and disposal prevent data clutter and ensure compliance with legal requirements.",
+            "Data Governance: Effective data governance ensures that data is handled correctly, securely, and in compliance with regulations.",
+            "Findable Data: Data that's easy to locate saves time and accelerates business insights.",
+            "Accessible Data: When data is readily accessible, employees can act quickly and make informed decisions.",
+            "Interoperable Data: Interoperable data seamlessly integrates across systems, enabling efficient collaboration.",
+            "Reusable Data: Data reuse reduces redundancy and maximises the value of your data assets.",
+            "Cataloguing in Action: A robust data catalog allows both people and systems to find what they need, when they need it.",
+            "Labeling for Success: Properly labelled data ensures clarity and reduces confusion across teams.",
+            "Lineage Mapping: Understanding your data's history helps you maintain accuracy and avoid costly errors.",
+            "Provenance for Trust: Knowing where data comes from builds trust, especially when shared across departments.",
+            "Effective Data Models: A solid data model lays the foundation for reliable analytics and reporting.",
+            "Quality Matters: Poor data quality leads to poor decisions—focus on keeping your data clean!",
+            "Lifecycle Management Best Practice: Reviewing, retaining, and securely disposing of data is key to compliance and operational efficiency.",
+            "Governance for Control: Strong governance frameworks protect sensitive information and maintain data integrity.",
+            "Findable and Searchable: A good data catalog makes your data discoverable, unlocking hidden insights.",
+            "Accessibility: Providing controlled access to data enables collaboration while ensuring security.",
+            "Interoperability Boosts Productivity: Interoperable data allows different tools and systems to work together efficiently.",
+            "Reusable Data Saves Time: Repurposing data across projects accelerates innovation and reduces duplication.",
+            "Cataloguing for Scalability: As data grows, an organised catalog ensures you can still find what you need, fast.",
+            "Labelling for Clarity: Proper labelling avoids misinterpretation and ensures data can be understood by all users.",
+            "Lineage Builds Confidence: Knowing data's path from origin to use enhances accountability and reliability.",
+            "Provenance Secures Data Value: Ensuring provenance helps verify the quality and validity of your data.",
+            "Data Quality Assurance: Routine quality checks protect your business from costly mistakes.",
+            "Governance Ensures Compliance: Strong governance practices help your organisation comply with regulations and protect data from misuse."
+        ];
+
+        // Preload images
+        const images = {};
+        let imagesLoaded = 0;
+        let totalImages = 0;
+
+        function preloadImages(callback) {
+            [...packetTypes, ...powerUpTypes].forEach(type => {
+                totalImages++;
+                images[type.icon] = new Image();
+                images[type.icon].onload = () => {
+                    imagesLoaded++;
+                    if (imagesLoaded === totalImages) {
+                        callback();
+                    }
+                };
+                images[type.icon].onerror = () => {
+                    console.error(`Failed to load image: ${type.icon}`);
+                    imagesLoaded++;
+                    if (imagesLoaded === totalImages) {
+                        callback();
+                    }
+                };
+                images[type.icon].src = type.icon;
+            });
+        }
+
+        // Load sounds with error handling
+        function loadSound(src) {
+            const audio = new Audio(src);
+            audio.onerror = () => console.log(`Failed to load sound: ${src}`);
+            return audio;
+        }
+
+        const sortSound = loadSound('https://raw.githubusercontent.com/zerovertical/datarush/main/sounds/sort.mp3');
+        const errorSound = loadSound('https://raw.githubusercontent.com/zerovertical/datarush/main/sounds/error.mp3');
+        const powerUpSound = loadSound('https://raw.githubusercontent.com/zerovertical/datarush/main/sounds/powerup.mp3');
+        const track1 = loadSound('https://raw.githubusercontent.com/zerovertical/datarush/main/sounds/track1.mp3');
+        const track2 = loadSound('https://raw.githubusercontent.com/zerovertical/datarush/main/sounds/track2.mp3');
+        const track3 = loadSound('https://raw.githubusercontent.com/zerovertical/datarush/main/sounds/track3.mp3');
+
+        let currentTrack = 0;
+        const tracks = [track1, track2, track3];
+
+        function playNextTrack() {
+            tracks[currentTrack].pause();
+            tracks[currentTrack].currentTime = 0;
+            currentTrack = (currentTrack + 1) % tracks.length;
+            tracks[currentTrack].play().catch(e => console.log('Error playing track:', e));
+            tracks[currentTrack].onended = playNextTrack;
+        }
+
+        // Particle system
+        class Particle {
+            constructor(x, y, color, speed = 1) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 2 * speed;
+                this.speedY = (Math.random() - 0.5) * 2 * speed;
+                this.life = 100;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.size > 0.1) this.size -= 0.1;
+                this.life--;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life / 100;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        let particles = [];
+
+        function createParticles(x, y, color, amount, speed = 1) {
+            for (let i = 0; i < amount; i++) {
+                particles.push(new Particle(x, y, color, speed));
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawParticles() {
+            particles.forEach(particle => particle.draw());
+        }
+
+        // Leaderboard
+        let leaderboard = [];
+
+        function saveLeaderboard() {
+            localStorage.setItem('dataRushLeaderboard', JSON.stringify(leaderboard));
+        }
+
+        function loadLeaderboard() {
+            const saved = localStorage.getItem('dataRushLeaderboard');
+            if (saved) {
+                leaderboard = JSON.parse(saved);
+                updateLeaderboard();
+            }
+        }
+
+        function initGame() {
+            score = 0;
+            gameOver = false;
+            packets = [];
+            folders = [];
+            powerUps = [];
+            damageLevel = 0;
+            draggedPacket = null;
+            level = 1;
+            packetSpeed = 1;
+            spawnRate = 0.005;
+            activePowerUp = null;
+            powerUpTimer = 0;
+            scoreRegistered = false;
+            highScoreAchieved = false;
+            damageParticles = [];
+            initFolders();
+            loadLeaderboard();
+            updateHighScore();
+            removeWarning();
+
+            // Reset score submission elements
+            scoreSubmission.style.display = 'block';
+            submitScoreButton.disabled = false;
+            playerNameInput.value = '';
+            leaderboardPosition.textContent = '';
+
+            // Show instructions if checkbox is checked
+            if (showInstructionsOnRestartCheckbox.checked) {
+                showInstructions();
+            }
+        }
+
+        function initFolders() {
+            const folderWidth = canvas.width / Math.min(level + 2, packetTypes.length);
+            const folderHeight = 200;
+
+            folders = [];
+            for (let i = 0; i < Math.min(level + 2, packetTypes.length); i++) {
+                const type = packetTypes[i];
+                folders.push({
+                    x: folderWidth * i,
+                    y: canvas.height - folderHeight,
+                    width: folderWidth,
+                    height: folderHeight,
+                    type: type.name,
+                    color: type.color,
+                    icon: type.icon
+                });
+            }
+        }
+
+        function createPacket() {
+            const availableTypes = packetTypes.slice(0, Math.min(level + 2, packetTypes.length));
+            const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+            const packet = {
+                x: Math.random() * (canvas.width - 100),
+                y: -100,
+                width: 100,
+                height: 100,
+                type: type.name,
+                color: type.color,
+                icon: type.icon,
+                speed: packetSpeed + Math.random() * 0.5,
+                isDragging: false,
+                originalX: 0,
+                originalY: 0,
+                rotation: 0,
+                scale: 1,
+                waveFactor: Math.random() * 0.4 * level * level,
+                waveOffset: Math.random() * Math.PI * 2
+            };
+            packets.push(packet);
+
+            gsap.from(packet, {
+                duration: 0.5,
+                y: "-=50",
+                rotation: 360,
+                scale: 0,
+                ease: "back.out(1.7)"
+            });
+        }
+
+        function createPowerUp() {
+            if (Math.random() < 0.001) {
+                const type = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+                const powerUp = {
+                    x: Math.random() * (canvas.width - 60),
+                    y: -60,
+                    width: 60,
+                    height: 60,
+                    type: type.name,
+                    color: type.color,
+                    icon: type.icon,
+                    speed: packetSpeed,
+                    duration: type.duration,
+                    rotation: 0,
+                    speedX: (Math.random() - 0.5) * 2
+                };
+                powerUps.push(powerUp);
+
+                gsap.to(powerUp, {
+                    duration: 5,
+                    rotation: 360,
+                    repeat: -1,
+                    ease: "none"
+                });
+            }
+        }
+
+        function activatePowerUp(powerUp) {
+            activePowerUp = powerUp;
+            powerUpTimer = powerUp.duration;
+            powerUpSound.play().catch(e => console.log('Error playing sound:', e));
+
+            if (powerUp.type === 'Slowdown') {
+                packets.forEach(packet => {
+                    packet.originalSpeed = packet.speed;
+                    packet.speed *= 0.5;
+                });
+            }
+
+            createParticles(powerUp.x, powerUp.y, powerUp.color, 30);
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            if (activePowerUp) {
+                powerUpTimer -= 16;
+                if (powerUpTimer <= 0) {
+                    if (activePowerUp.type === 'Slowdown') {
+                        packets.forEach(packet => {
+                            packet.speed = packet.originalSpeed;
+                        });
+                    }
+                    activePowerUp = null;
+                }
+            }
+
+            packets.forEach(packet => {
+                if (!packet.sorted && !packet.isDragging) {
+                    packet.y += packet.speed;
+                    packet.x += Math.sin(packet.y * 0.05 + packet.waveOffset) * packet.waveFactor;
+                    
+                    if (activePowerUp && activePowerUp.type === 'AutoSort') {
+                        const correctFolder = folders.find(folder => folder.type === packet.type);
+                        if (correctFolder) {
+                            gsap.to(packet, {
+                                duration: 0.5,
+                                x: correctFolder.x + correctFolder.width / 2 - packet.width / 2,
+                                ease: "power2.out"
+                            });
+                        }
+                    }
+
+                    folders.forEach(folder => {
+                        if (packet.x < folder.x + folder.width &&
+                            packet.x + packet.width > folder.x &&
+                            packet.y + packet.height > folder.y) {
+                            packet.sorted = true;
+                            if (packet.type === folder.type) {
+                                score += 10;
+                                sortSound.play().catch(e => console.log('Error playing sound:', e));
+                                showFeedback(packet.x, packet.y, '+10', 'green');
+                                createParticles(packet.x, packet.y, folder.color, 20);
+                                checkMilestone();
+                            } else {
+                                score -= 5;
+                                damageLevel += 20;
+                                errorSound.play().catch(e => console.log('Error playing sound:', e));
+                                showFeedback(packet.x, packet.y, '-5', 'red');
+                                createParticles(packet.x, packet.y, 'red', 10, 2);
+                                createDamageParticles();
+                            }
+                        }
+                    });
+
+                    if (packet.y > canvas.height) {
+                        damageLevel += 30;
+                        createParticles(packet.x, canvas.height, 'orange', 15);
+                        createDamageParticles();
+                    }
+                }
+            });
+
+            powerUps.forEach(powerUp => {
+                powerUp.y += powerUp.speed;
+                powerUp.x += powerUp.speedX;
+                if (powerUp.y > canvas.height || powerUp.x < 0 || powerUp.x > canvas.width) {
+                    powerUp.remove = true;
+                }
+            });
+
+            packets = packets.filter(packet => !packet.sorted && packet.y <= canvas.height);
+            powerUps = powerUps.filter(powerUp => !powerUp.remove);
+
+            updateDamageBar();
+
+            if (damageLevel >= 100) {
+                gameOver = true;
+            }
+
+            if (Math.random() < spawnRate) {
+                createPacket();
+            }
+            createPowerUp();
+
+            if (score > level * 100) {
+                level++;
+                packetSpeed += 0.1;
+                spawnRate += 0.001;
+                initFolders();
+            }
+
+            packetSpeed = 1 + (score / 1000) * 0.5;
+            updateParticles();
+            updateDamageParticles();
+        }
+
+        function updateDamageBar() {
+            damageBar.style.width = `${damageLevel}%`;
+            if (damageLevel > 80) {
+                damageBar.classList.add('animate-pulse');
+                showWarning();
+            } else {
+                damageBar.classList.remove('animate-pulse');
+                removeWarning();
+            }
+        }
+
+        function showWarning() {
+            warningMessage.classList.remove('hidden');
+            gsap.to(warningMessage, {
+                opacity: 0,
+                duration: 1,
+                repeat: -1,
+                yoyo: true
+            });
+        }
+
+        function removeWarning() {
+            warningMessage.classList.add('hidden');
+            gsap.killTweensOf(warningMessage);
+        }
+
+        function createDamageParticles() {
+            const x = 20 + damageLevel * 2.56;
+            const y = 24;
+            damageParticles.push(...Array(5).fill().map(() => new Particle(x, y, 'red', 2)));
+        }
+
+        function updateDamageParticles() {
+            damageParticles.forEach(particle => particle.update());
+            damageParticles = damageParticles.filter(particle => particle.life > 0);
+        }
+
+        function drawDamageParticles() {
+            damageParticles.forEach(particle => particle.draw());
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+
+            folders.forEach(folder => {
+                ctx.fillStyle = folder.color;
+                ctx.beginPath();
+                ctx.moveTo(folder.x, folder.y);
+                ctx.lineTo(folder.x + folder.width, folder.y);
+                ctx.lineTo(folder.x + folder.width, folder.y + folder.height - 10);
+                ctx.quadraticCurveTo(folder.x + folder.width, folder.y + folder.height, folder.x + folder.width - 10, folder.y + folder.height);
+                ctx.lineTo(folder.x + 10, folder.y + folder.height);
+                ctx.quadraticCurveTo(folder.x, folder.y + folder.height, folder.x, folder.y + folder.height - 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                const icon = images[folder.icon];
+                if (icon && icon.complete && icon.naturalHeight !== 0) {
+                    ctx.drawImage(icon, folder.x + folder.width/2 - 25, folder.y + folder.height/2 - 25, 50, 50);
+                }
+
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(folder.type, folder.x + folder.width/2, folder.y + folder.height - 20);
+            });
+
+            packets.forEach(packet => {
+                ctx.save();
+                ctx.translate(packet.x + packet.width/2, packet.y + packet.height/2);
+                ctx.rotate(packet.rotation * Math.PI / 180);
+                ctx.scale(packet.scale, packet.scale);
+                
+                ctx.fillStyle = packet.color;
+                ctx.beginPath();
+                ctx.moveTo(-packet.width/2 + 10, -packet.height/2);
+                ctx.lineTo(packet.width/2 - 10, -packet.height/2);
+                ctx.quadraticCurveTo(packet.width/2, -packet.height/2, packet.width/2, -packet.height/2 + 10);
+                ctx.lineTo(packet.width/2, packet.height/2 - 10);
+                ctx.quadraticCurveTo(packet.width/2, packet.height/2, packet.width/2 - 10, packet.height/2);
+                ctx.lineTo(-packet.width/2 + 10, packet.height/2);
+                ctx.quadraticCurveTo(-packet.width/2, packet.height/2, -packet.width/2, packet.height/2 - 10);
+                ctx.lineTo(-packet.width/2, -packet.height/2 + 10);
+                ctx.quadraticCurveTo(-packet.width/2, -packet.height/2, -packet.width/2 + 10, -packet.height/2);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                const icon = images[packet.icon];
+                if (icon && icon.complete && icon.naturalHeight !== 0) {
+                    ctx.drawImage(icon, -packet.width/2 + 10, -packet.height/2 + 10, packet.width - 20, packet.height - 20);
+                }
+
+                ctx.restore();
+
+                if (packet.isDragging) {
+                    ctx.strokeStyle = 'yellow';
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(packet.x - 2, packet.y - 2, packet.width + 4, packet.height + 4);
+                }
+            });
+
+            powerUps.forEach(powerUp => {
+                ctx.save();
+                ctx.translate(powerUp.x + powerUp.width/2, powerUp.y + powerUp.height/2);
+                ctx.rotate(powerUp.rotation * Math.PI / 180);
+                ctx.fillStyle = powerUp.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, powerUp.width/2, 0, Math.PI * 2);
+                ctx.fill();
+
+                const icon = images[powerUp.icon];
+                if (icon && icon.complete && icon.naturalHeight !== 0) {
+                    ctx.drawImage(icon, -powerUp.width/2 + 5, -powerUp.height/2 + 5, powerUp.width - 10, powerUp.height - 10);
+                }
+
+                ctx.restore();
+            });
+
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 36px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(`Score: ${score}`, canvas.width - 20, 50);
+            ctx.fillText(`Level: ${level}`, canvas.width - 20, 100);
+
+            if (activePowerUp) {
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 28px Arial';
+                ctx.fillText(`${activePowerUp.type}: ${Math.ceil(powerUpTimer / 1000)}s`, canvas.width - 20, 150);
+            }
+
+            drawParticles();
+            drawDamageParticles();
+        }
+
+        function showFeedback(x, y, text, color) {
+            const feedback = { x, y, text, color, opacity: 1 };
+            gsap.to(feedback, {
+                duration: 1,
+                y: "-=100",
+                opacity: 0,
+                onUpdate: () => {
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = feedback.opacity;
+                    ctx.font = 'bold 36px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(text, feedback.x, feedback.y);
+                    ctx.globalAlpha = 1;
+                }
+            });
+        }
+
+        function gameLoop() {
+            if (gameStarted && !gameOver) {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            } else if (gameOver) {
+                showGameOver();
+            }
+        }
+
+        function showGameOver() {
+            gameOverScreen.style.display = 'block';
+            finalScoreSpan.textContent = score;
+            showDataFundamentals();
+        }
+
+        function showDataFundamentals() {
+            const message = dataFundamentals[Math.floor(Math.random() * dataFundamentals.length)];
+            const dataFundamentalsElement = document.getElementById('dataFundamentalsMessage');
+            dataFundamentalsElement.textContent = message;
+            dataFundamentalsElement.classList.remove('hidden');
+            
+            gsap.from(dataFundamentalsElement, {
+                duration: 0.5,
+                opacity: 0,
+                y: 50,
+                ease: "back.out(1.7)"
+            });
+
+            dataFundamentalsElement.style.maxWidth = '80%';
+            dataFundamentalsElement.style.margin = '0 auto';
+            dataFundamentalsElement.style.boxShadow = '0 0 20px rgba(255, 255, 255, 0.5)';
+
+            submitScoreButton.disabled = true;
+            setTimeout(() => {
+                submitScoreButton.disabled = false;
+                
+                gsap.to(dataFundamentalsElement, {
+                    duration: 0.5,
+                    opacity: 0,
+                    y: -50,
+                    ease: "power2.in",
+                    onComplete: () => dataFundamentalsElement.classList.add('hidden')
+                });
+            }, 10000);
+        }
+
+        function updateLeaderboard() {
+            leaderboardList.innerHTML = '';
+            leaderboard.sort((a, b) => b.score - a.score).slice(0, 20).forEach((entry, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${entry.name}: ${entry.score}`;
+                leaderboardList.appendChild(li);
+            });
+            saveLeaderboard();
+        }
+
+        function updateHighScore() {
+            highScore = leaderboard.length > 0 ? leaderboard[0].score : 0;
+        }
+
+        function checkMilestone() {
+            if (score % 100 === 0) {
+                showMilestoneAnimation();
+            }
+            if (score > highScore && score > 0 && !highScoreAchieved) {
+                showHighScoreAnimation();
+                highScoreAchieved = true;
+            }
+        }
+
+        function showMilestoneAnimation() {
+            const milestone = document.createElement('div');
+            milestone.textContent = `Well done ${score} points!`;
+            milestone.className = 'absolute text-4xl text-yellow-400 font-bold';
+            milestone.style.left = '50%';
+            milestone.style.top = '50%';
+            milestone.style.transform = 'translate(-50%, -50%)';
+            document.body.appendChild(milestone);
+
+            gsap.from(milestone, {
+                scale: 0,
+                opacity: 0,
+                duration: 0.5,
+                ease: "back.out(1.7)",
+                onComplete: () => {
+                    gsap.to(milestone, {
+                        opacity: 0,
+                        y: -100,
+                        duration: 1,
+                        delay: 1,
+                        onComplete: () => milestone.remove()
+                    });
+                }
+            });
+        }
+
+        function showHighScoreAnimation() {
+            const highScoreMsg = document.createElement('div');
+            highScoreMsg.textContent = 'New High Score!';
+            highScoreMsg.className = 'absolute text-6xl text-gold font-bold';
+            highScoreMsg.style.left = '50%';
+            highScoreMsg.style.top = '50%';
+            highScoreMsg.style.transform = 'translate(-50%, -50%)';
+            document.body.appendChild(highScoreMsg);
+
+            gsap.from(highScoreMsg, {
+                scale: 0,
+                opacity: 0,
+                duration: 1,
+                ease: "elastic.out(1, 0.3)",
+                onComplete: () => {
+                    gsap.to(highScoreMsg, {
+                        opacity: 0,
+                        scale: 2,
+                        duration: 1,
+                        delay: 2,
+                        onComplete: () => highScoreMsg.remove()
+                    });
+                }
+            });
+        }
+
+        function handleStart(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+            packets.forEach(packet => {
+                if (x > packet.x && x < packet.x + packet.width &&
+                    y > packet.y && y < packet.y + packet.height) {
+                    packet.isDragging = true;
+                    packet.originalX = packet.x;
+                    packet.originalY = packet.y;
+                    draggedPacket = packet;
+                    gsap.to(packet, { duration: 0.1, scale: 1.1, ease: "power2.out" });
+                }
+            });
+
+            powerUps.forEach((powerUp, index) => {
+                if (x > powerUp.x && x < powerUp.x + powerUp.width &&
+                    y > powerUp.y && y < powerUp.y + powerUp.height) {
+                    activatePowerUp(powerUp);
+                    powerUps.splice(index, 1);
+                }
+            });
+        }
+
+        function handleMove(e) {
+            if (draggedPacket) {
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                draggedPacket.x = Math.max(0, Math.min(canvas.width - draggedPacket.width, x - draggedPacket.width / 2));
+                draggedPacket.y = Math.max(draggedPacket.originalY, Math.min(canvas.height - draggedPacket.height, y - draggedPacket.height / 2));
+            }
+        }
+
+        function handleEnd() {
+            if (draggedPacket) {
+                let sorted = false;
+                folders.forEach(folder => {
+                    if (draggedPacket.x < folder.x + folder.width &&
+                        draggedPacket.x + draggedPacket.width > folder.x &&
+                        draggedPacket.y + draggedPacket.height > folder.y) {
+                        sorted = true;
+                        if (draggedPacket.type === folder.type) {
+                            score += 10;
+                            sortSound.play().catch(e => console.log('Error playing sound:', e));
+                            showFeedback(draggedPacket.x, draggedPacket.y, '+10', 'green');
+                            createParticles(draggedPacket.x, draggedPacket.y, folder.color, 20);
+                            checkMilestone();
+                        } else {
+                            score -= 5;
+                            damageLevel += 20;
+                            errorSound.play().catch(e => console.log('Error playing sound:', e));
+                            showFeedback(draggedPacket.x, draggedPacket.y, '-5', 'red');
+                            createParticles(draggedPacket.x, draggedPacket.y, 'red', 10, 2);
+                            createDamageParticles();
+                        }
+                        draggedPacket.sorted = true;
+                    }
+                });
+
+                gsap.to(draggedPacket, { duration: 0.1, scale: 1, ease: "power2.in" });
+                draggedPacket.isDragging = false;
+                draggedPacket = null;
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        canvas.addEventListener('touchend', handleEnd);
+
+        startButton.addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            gameStarted = true;
+            initGame();
+            playNextTrack();
+            gameLoop();
+        });
+
+        function showInstructions() {
+            alert('Sort the falling data packets into the correct folders by dragging them horizontally or vertically (but not upwards). Match colors and icons to score points. Collect power-ups for special abilities. Avoid incorrect sorting or letting packets fall off the screen, as this increases the damage bar. The game ends when the damage bar is full. Watch out for the data swamp! Good luck!');
+        }
+
+        instructionsButton.addEventListener('click', showInstructions);
+
+        restartButton.addEventListener('click', () => {
+            gameOverScreen.style.display = 'none';
+            initGame();
+            gameStarted = true;
+            gameLoop();
+        });
+
+        submitScoreButton.addEventListener('click', () => {
+            const playerName = playerNameInput.value.trim();
+            if (playerName) {
+                leaderboard.push({ name: playerName, score: score });
+                leaderboard.sort((a, b) => b.score - a.score);
+                const playerRank = leaderboard.findIndex(entry => entry.name === playerName && entry.score === score) + 1;
+                leaderboardPosition.textContent = `Your rank: ${playerRank} out of ${leaderboard.length}`;
+                updateLeaderboard();
+                playerNameInput.value = '';
+                submitScoreButton.disabled = true;
+                scoreSubmission.style.display = 'none';
+            }
+        });
+
+        bgImage.onload = () => {
+            preloadImages(() => {
+                initGame();
+                updateLeaderboard();
+                startButton.disabled = false;
+                startButton.textContent = "Start Game";
+            });
+        };
+
+        bgImage.onerror = () => {
+            console.error('Failed to load background image. Using fallback.');
+            bgImage.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
+            preloadImages(() => {
+                initGame();
+                updateLeaderboard();
+                startButton.disabled = false;
+                startButton.textContent = "Start Game";
+            });
+        };
+
+        document.body.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        function resizeCanvas() {
+            const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            canvas.style.transform = `scale(${scale})`;
+            canvas.style.transformOrigin = 'top left';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        gsap.registerPlugin(ScalePlugin, OpacityPlugin);
+    </script>
+</body>
+</html>
