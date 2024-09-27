@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Data Rush</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/ScrollToPlugin.min.js"></script>
     <style>
         @keyframes float {
             0% { transform: translateY(0px); }
@@ -18,41 +18,65 @@
         #damageBar {
             transition: width 0.3s ease-in-out;
         }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
     </style>
 </head>
-<body class="bg-gray-900 flex justify-center items-center h-screen">
-    <div id="startScreen" class="absolute z-10 bg-black bg-opacity-80 text-white p-8 rounded-lg text-center">
-        <h1 class="text-4xl font-bold mb-4">Data Rush</h1>
-        <button id="startButton" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2" disabled>Loading...</button>
-        <button id="instructionsButton" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Instructions</button>
-        <div class="mt-4">
-            <input type="checkbox" id="showInstructionsOnRestart" class="mr-2">
-            <label for="showInstructionsOnRestart">Show instructions on restart</label>
+<body class="bg-gray-900">
+    <div id="gameContainer" class="w-full h-full">
+        <div id="startScreen" class="absolute inset-0 z-10 bg-black bg-opacity-80 text-white p-4 flex flex-col justify-center items-center">
+            <h1 class="text-4xl font-bold mb-4">Data Rush</h1>
+            <button id="startButton" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2 mb-2" disabled>Loading...</button>
+            <button id="instructionsButton" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mb-2">Instructions</button>
+            <div class="mt-4">
+                <input type="checkbox" id="showInstructionsOnRestart" class="mr-2">
+                <label for="showInstructionsOnRestart">Show instructions on restart</label>
+            </div>
         </div>
-    </div>
-    <div id="gameOverScreen" class="absolute z-10 bg-black bg-opacity-80 text-white p-8 rounded-lg text-center" style="display: none;">
-        <h2 class="text-3xl font-bold mb-4">Game Over</h2>
-        <p class="mb-4">Your Score: <span id="finalScore" class="font-bold text-2xl"></span></p>
-        <div id="dataFundamentalsMessage" class="mb-4 p-6 bg-blue-800 rounded-lg shadow-lg text-white text-4xl font-semibold border-2 border-yellow-400 hidden"></div>
-        <div id="scoreSubmission">
-            <input type="text" id="playerName" placeholder="Enter your name" class="mb-4 p-2 text-black rounded">
-            <button id="submitScore" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded mr-2">Submit Score</button>
+        <div id="gameOverScreen" class="absolute inset-0 z-10 bg-black bg-opacity-80 text-white p-4 flex flex-col justify-center items-center" style="display: none;">
+            <h2 class="text-3xl font-bold mb-4">Game Over</h2>
+            <p class="mb-4">Your Score: <span id="finalScore" class="font-bold text-2xl"></span></p>
+            <div id="dataFundamentalsMessage" class="mb-4 p-6 bg-blue-800 rounded-lg shadow-lg text-white text-xl font-semibold border-2 border-yellow-400 hidden"></div>
+            <div id="scoreSubmission">
+                <input type="text" id="playerName" placeholder="Enter your name" class="mb-4 p-2 text-black rounded">
+                <button id="submitScore" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded mr-2">Submit Score</button>
+            </div>
+            <div id="leaderboardPosition" class="mt-4"></div>
+            <button id="restartButton" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-4">Restart Game</button>
         </div>
-        <div id="leaderboardPosition" class="mt-4"></div>
-        <button id="restartButton" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-4">Restart Game</button>
-    </div>
-    <canvas id="gameCanvas" width="1920" height="1080" class="border border-gray-300 rounded-lg shadow-lg"></canvas>
-    <div id="damageBarContainer" class="absolute left-4 top-4 w-64 h-8 bg-gray-700 rounded-full overflow-hidden">
-        <div id="damageBar" class="h-full bg-red-600 transition-all duration-300 ease-in-out"></div>
-    </div>
-    <div id="leaderboard" class="absolute right-4 top-4 bg-black bg-opacity-80 text-white p-4 rounded-lg">
-        <h3 class="text-xl font-bold mb-2">Top 20 Scores</h3>
-        <ol id="leaderboardList" class="list-decimal list-inside"></ol>
-    </div>
-    <div id="warningMessage" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white p-4 rounded-lg text-2xl font-bold">
-        Warning: Data Swamp Imminent!
+        <canvas id="gameCanvas"></canvas>
+        <div id="uiOverlay" class="absolute inset-0 pointer-events-none">
+            <div id="damageBarContainer" class="absolute left-4 top-4 w-32 h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div id="damageBar" class="h-full bg-red-600 transition-all duration-300 ease-in-out"></div>
+            </div>
+            <div id="scoreDisplay" class="absolute right-4 top-4 text-white font-bold text-xl">Score: <span id="currentScore">0</span></div>
+            <div id="levelDisplay" class="absolute right-4 top-12 text-white font-bold text-xl">Level: <span id="currentLevel">1</span></div>
+            <div id="leaderboard" class="absolute right-4 bottom-4 bg-black bg-opacity-80 text-white p-2 rounded-lg max-h-40 overflow-y-auto" style="max-width: 200px;">
+                <h3 class="text-lg font-bold mb-2">Top 20 Scores</h3>
+                <ol id="leaderboardList" class="list-decimal list-inside text-sm"></ol>
+            </div>
+        </div>
+        <div id="warningMessage" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white p-4 rounded-lg text-xl font-bold">
+            Warning: Data Swamp Imminent!
+        </div>
     </div>
     <script>
+        const gameContainer = document.getElementById('gameContainer');
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const startScreen = document.getElementById('startScreen');
@@ -62,6 +86,8 @@
         const restartButton = document.getElementById('restartButton');
         const submitScoreButton = document.getElementById('submitScore');
         const finalScoreSpan = document.getElementById('finalScore');
+        const currentScoreSpan = document.getElementById('currentScore');
+        const currentLevelSpan = document.getElementById('currentLevel');
         const playerNameInput = document.getElementById('playerName');
         const leaderboardList = document.getElementById('leaderboardList');
         const damageBar = document.getElementById('damageBar');
@@ -289,11 +315,16 @@
             if (showInstructionsOnRestartCheckbox.checked) {
                 showInstructions();
             }
+
+            // Reset and update UI
+            currentScoreSpan.textContent = '0';
+            currentLevelSpan.textContent = '1';
+            updateDamageBar();
         }
 
         function initFolders() {
             const folderWidth = canvas.width / Math.min(level + 2, packetTypes.length);
-            const folderHeight = 200;
+            const folderHeight = canvas.height * 0.2;
 
             folders = [];
             for (let i = 0; i < Math.min(level + 2, packetTypes.length); i++) {
@@ -313,11 +344,12 @@
         function createPacket() {
             const availableTypes = packetTypes.slice(0, Math.min(level + 2, packetTypes.length));
             const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+            const packetSize = Math.min(canvas.width, canvas.height) * 0.1;
             const packet = {
-                x: Math.random() * (canvas.width - 100),
-                y: -100,
-                width: 100,
-                height: 100,
+                x: Math.random() * (canvas.width - packetSize),
+                y: -packetSize,
+                width: packetSize,
+                height: packetSize,
                 type: type.name,
                 color: type.color,
                 icon: type.icon,
@@ -344,11 +376,12 @@
         function createPowerUp() {
             if (Math.random() < 0.001) {
                 const type = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+                const powerUpSize = Math.min(canvas.width, canvas.height) * 0.06;
                 const powerUp = {
-                    x: Math.random() * (canvas.width - 60),
-                    y: -60,
-                    width: 60,
-                    height: 60,
+                    x: Math.random() * (canvas.width - powerUpSize),
+                    y: -powerUpSize,
+                    width: powerUpSize,
+                    height: powerUpSize,
                     type: type.name,
                     color: type.color,
                     icon: type.icon,
@@ -476,6 +509,10 @@
             packetSpeed = 1 + (score / 1000) * 0.5;
             updateParticles();
             updateDamageParticles();
+
+            // Update UI
+            currentScoreSpan.textContent = score;
+            currentLevelSpan.textContent = level;
         }
 
         function updateDamageBar() {
@@ -593,7 +630,7 @@
                 ctx.rotate(powerUp.rotation * Math.PI / 180);
                 ctx.fillStyle = powerUp.color;
                 ctx.beginPath();
-                ctx.arc(0, 0, powerUp.width/2, 0, Math.PI * 2);
+                ctx.arc(0, 0, powerUp.width/2, 0, Math.PI* 2);
                 ctx.fill();
 
                 const icon = images[powerUp.icon];
@@ -603,18 +640,6 @@
 
                 ctx.restore();
             });
-
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 36px Arial';
-            ctx.textAlign = 'right';
-            ctx.fillText(`Score: ${score}`, canvas.width - 20, 50);
-            ctx.fillText(`Level: ${level}`, canvas.width - 20, 100);
-
-            if (activePowerUp) {
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 28px Arial';
-                ctx.fillText(`${activePowerUp.type}: ${Math.ceil(powerUpTimer / 1000)}s`, canvas.width - 20, 150);
-            }
 
             drawParticles();
             drawDamageParticles();
@@ -648,7 +673,7 @@
         }
 
         function showGameOver() {
-            gameOverScreen.style.display = 'block';
+            gameOverScreen.style.display = 'flex';
             finalScoreSpan.textContent = score;
             showDataFundamentals();
         }
@@ -762,8 +787,10 @@
 
         function handleStart(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX || e.touches[0].clientX) - rect.left;
-            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = ((e.clientX || e.touches[0].clientX) - rect.left) * scaleX;
+            const y = ((e.clientY || e.touches[0].clientY) - rect.top) * scaleY;
 
             packets.forEach(packet => {
                 if (x > packet.x && x < packet.x + packet.width &&
@@ -788,8 +815,10 @@
         function handleMove(e) {
             if (draggedPacket) {
                 const rect = canvas.getBoundingClientRect();
-                const x = (e.clientX || e.touches[0].clientX) - rect.left;
-                const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = ((e.clientX || e.touches[0].clientX) - rect.left) * scaleX;
+                const y = ((e.clientY || e.touches[0].clientY) - rect.top) * scaleY;
                 draggedPacket.x = Math.max(0, Math.min(canvas.width - draggedPacket.width, x - draggedPacket.width / 2));
                 draggedPacket.y = Math.max(draggedPacket.originalY, Math.min(canvas.height - draggedPacket.height, y - draggedPacket.height / 2));
             }
@@ -869,6 +898,35 @@
             }
         });
 
+        function resizeCanvas() {
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
+            const aspectRatio = 16 / 9;
+
+            let canvasWidth, canvasHeight;
+
+            if (containerWidth / containerHeight > aspectRatio) {
+                canvasHeight = containerHeight;
+                canvasWidth = canvasHeight * aspectRatio;
+            } else {
+                canvasWidth = containerWidth;
+                canvasHeight = canvasWidth / aspectRatio;
+            }
+
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            canvas.style.width = `${canvasWidth}px`;
+            canvas.style.height = `${canvasHeight}px`;
+
+            if (gameStarted) {
+                initFolders();
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
         bgImage.onload = () => {
             preloadImages(() => {
                 initGame();
@@ -890,18 +948,10 @@
         };
 
         document.body.addEventListener('touchmove', function(e) {
-            e.preventDefault();
+            if (e.target == canvas) {
+                e.preventDefault();
+            }
         }, { passive: false });
-
-        function resizeCanvas() {
-            const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-            canvas.style.transform = `scale(${scale})`;
-            canvas.style.transformOrigin = 'top left';
-        }
-
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
     </script>
 </body>
 </html>
